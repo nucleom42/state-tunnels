@@ -2,19 +2,13 @@
 
 module StateTunnels
   module Tunelable
-     def self.included(base)
+    def self.included(base)
       base.send(:extend, ClassMethods)
       base.send(:include, InstanceMethods)
-      base.prepend(Initializer)
     end
-  
-    module Initializer
-      def initialize(*)
-      end
-    end
-  
+
     module ClassMethods
-      # -Adds ability to configure state machine with enum_transitions method.
+      # -Adds ability to configure state machine with transitions method.
       # -Adds to_{state_value}? boolean method, that evaluate transition to specific state value.
       # -Triggers described tunnels validation for confirming given transaction.
       #
@@ -33,7 +27,7 @@ module StateTunnels
       #    #  if: method name which also checks if transition is eligible, [sym] (optional)
       #
       #
-      #     enum_transitions for: STATES, with: {
+      #     transitions for: STATES, with: {
       #                             PROGRESS: { from: [:NA], if: :can_be_progressed? },
       #                             DISPATCHED: { from: [:PROGRESS] }
       #                           }
@@ -47,32 +41,35 @@ module StateTunnels
       #   with: hash, transition rules
       #   field: symbol, name of the model enum which will be considered as a state. Default value is :state
       #   for: list of the states, [symbol]
-      def enum_transitions(**props)
+      def transitions(**props)
         field_name = props[:field] || :state
         transition_rules = props[:with] || {}
         states_list = props[:states] || []
 
-        add_state_transitions_method?(field_name, transition_rules)
-        add_state_transitions_method(field_name)
+        add_valid_state_transitions_method?(field_name, transition_rules)
+        add_valid_state_transitions_method(field_name)
         add_to_state_methods(states_list)
 
-        send(:validate, :state_transitions, if: "#{field_name}_changed?".to_sym)
+        send(:validate, :valid_state_transitions, if: "#{field_name}_changed?".to_sym)
       end
 
-      def add_state_transitions_method?(field_name, transition_rules)
-        define_method :state_transitions? do |args = {}|
+      def add_valid_state_transitions_method?(field_name, transition_rules)
+        define_method :valid_state_transitions? do |args = {}|
           target_state = (args[:target] || send(field_name))&.to_sym
           was_state = send("#{field_name}_was")&.to_sym
+
           allowed_from_states = transition_rules.dig(target_state, :from)
           if_condition = transition_rules.dig(target_state, :if)
+
           condition_result = !if_condition || fire_it(if_condition, args)
+
           allowed_from_states ? (allowed_from_states.include?(was_state) && condition_result) : condition_result
         end
       end
 
-      def add_state_transitions_method(field_name)
-        define_method :state_transitions do
-          return true if state_transitions?
+      def add_valid_state_transitions_method(field_name)
+        define_method :valid_state_transitions do
+          return true if valid_state_transitions?
 
           errors.add(field_name, "invalid transition from #{send("#{field_name}_was")} to #{send(field_name)}")
         end
@@ -81,12 +78,11 @@ module StateTunnels
       def add_to_state_methods(states_list)
         states_list.each do |to_state|
           define_method("to_#{to_state.downcase}?".to_sym) do |args = {}|
-            state_transitions?(target: to_state, self: self, props: args)
+            valid_state_transitions?(target: to_state, self: self, props: args)
           end
         end
       end
 
-      ## un-applied helper method(s), (unused/untested) ##
 
       ## fire!
       # Alternative state transition method to traditional model_instance.{state}!
@@ -142,7 +138,7 @@ module StateTunnels
         end
       end
     end
-  
+
     module InstanceMethods
       private
 
@@ -158,5 +154,5 @@ module StateTunnels
         end
       end
     end
-   end
+  end
 end
