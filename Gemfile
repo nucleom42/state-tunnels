@@ -13,4 +13,5 @@ group :development, :test do
   gem 'pry', '~> 0.13.1'
   gem 'pry-nav'
   gem 'rubocop'
+  gem 'activerecord'
 end
